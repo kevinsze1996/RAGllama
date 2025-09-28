@@ -49,15 +49,30 @@ check_port() {
 wait_for_service() {
     local port=$1
     local service=$2
-    local max_attempts=30
+    local max_attempts=60
     local attempt=1
     
     echo "⏳ Waiting for $service to be ready on port $port..."
-    while ! nc -z localhost $port >/dev/null 2>&1; do
+    while true; do
         if [ $attempt -ge $max_attempts ]; then
             echo "❌ $service failed to start on port $port after ${max_attempts}s"
             exit 1
         fi
+        
+        # Use curl for HTTP services (FastAPI), nc for others
+        if [ "$service" = "FastAPI" ]; then
+            # Try multiple endpoints to increase reliability
+            if curl -s --max-time 3 http://localhost:$port/docs > /dev/null 2>&1; then
+                break
+            elif curl -s --max-time 3 http://localhost:$port/ > /dev/null 2>&1; then
+                break
+            fi
+        else
+            if nc -z localhost $port >/dev/null 2>&1; then
+                break
+            fi
+        fi
+        
         sleep 1
         ((attempt++))
     done
@@ -120,9 +135,18 @@ wait_for_service $QDRANT_PORT "Qdrant"
 # Start FastAPI backend
 echo "🔧 Starting FastAPI backend..."
 check_port $FASTAPI_PORT "FastAPI"
-uv run uvicorn main:app --reload --host 0.0.0.0 --port $FASTAPI_PORT > /dev/null 2>&1 &
+uv run uvicorn main:app --reload --host 0.0.0.0 --port $FASTAPI_PORT > fastapi.log 2>&1 &
 FASTAPI_PID=$!
 echo "   FastAPI started (PID: $FASTAPI_PID)"
+
+# Check if FastAPI process is still running
+sleep 2
+if ! kill -0 $FASTAPI_PID 2>/dev/null; then
+    echo "❌ FastAPI process died immediately. Check fastapi.log for errors:"
+    tail -10 fastapi.log
+    exit 1
+fi
+
 wait_for_service $FASTAPI_PORT "FastAPI"
 
 # Start Streamlit frontend

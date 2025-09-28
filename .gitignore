@@ -63,3 +63,17 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+
+# Node.js dependencies (not needed for Python app)
+node_modules/
+package.json
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Platform-specific build artifacts
+*.exe
+*.dll
+*.dylib
+*.so
